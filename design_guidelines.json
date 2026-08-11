@@ -1,0 +1,166 @@
+{
+  "project_name": "LeadGen Command Center",
+  "app_type": "saas_app",
+  "theme": "dark",
+  "design_archetype": "The Performance Pro (Tactical Minimalism)",
+  "emotional_tone": "High-visibility, commanding, efficient, precise.",
+  "typography": {
+    "strategy": "Swiss Brutalist meets Tech. Radical contrast between highly technical headings and highly legible sterile monospace/sans body.",
+    "fonts": {
+      "headings": "Chivo",
+      "body": "IBM Plex Sans",
+      "mono": "JetBrains Mono"
+    },
+    "installation": "yarn add @fontsource/chivo @fontsource/ibm-plex-sans @fontsource/jetbrains-mono",
+    "hierarchy": {
+      "H1": "text-4xl tracking-tighter font-black",
+      "H2": "text-2xl tracking-tight font-bold",
+      "H3": "text-xl font-bold",
+      "H4": "text-lg font-semibold",
+      "Body": "text-sm leading-relaxed",
+      "Labels": "text-xs tracking-[0.2em] uppercase font-bold text-muted-foreground"
+    },
+    "rules": [
+      "DO NOT use Inter, Roboto, or generic Sans for headings.",
+      "Headlines > 32px MUST use tracking-tight or tracking-tighter.",
+      "Overlines and table headers must be Uppercase, Tiny, and Wide Spacing.",
+      "Use JetBrains Mono for data points like phone numbers or rating scores."
+    ]
+  },
+  "colors": {
+    "backgrounds": {
+      "base": "#0A0A0A",
+      "surface": "#121212",
+      "panel": "#1A1A1A"
+    },
+    "text": {
+      "primary": "#FFFFFF",
+      "secondary": "#A1A1AA",
+      "muted": "#71717A"
+    },
+    "accents": {
+      "primary": "#007AFF",
+      "alert_critical": "#FF3B30",
+      "alert_success": "#34C759",
+      "alert_warning": "#FFCC00"
+    },
+    "css_variables_update": {
+      "dark": {
+        "--background": "0 0% 4%",
+        "--foreground": "0 0% 100%",
+        "--card": "0 0% 7%",
+        "--card-foreground": "0 0% 100%",
+        "--popover": "0 0% 7%",
+        "--popover-foreground": "0 0% 100%",
+        "--primary": "211 100% 50%",
+        "--primary-foreground": "0 0% 100%",
+        "--secondary": "240 5% 10%",
+        "--secondary-foreground": "0 0% 100%",
+        "--muted": "240 5% 16%",
+        "--muted-foreground": "240 5% 65%",
+        "--accent": "240 5% 16%",
+        "--accent-foreground": "0 0% 100%",
+        "--destructive": "0 100% 60%",
+        "--destructive-foreground": "0 0% 100%",
+        "--border": "240 5% 20%",
+        "--input": "240 5% 20%",
+        "--ring": "211 100% 50%",
+        "--radius": "0rem"
+      }
+    },
+    "rules": [
+      "Zero use of Teal Green or Teal Blue.",
+      "Dark Mode Default.",
+      "Use Electric Blaze (#FF3B30) strictly for 'No Website' tags to draw immediate sales rep attention.",
+      "Never use pure black #000000, use Deep Obsidian #0A0A0A.",
+      "Hover states must explicitly set text color (e.g., hover:bg-accent hover:text-white)."
+    ]
+  },
+  "layouts": {
+    "strategy": "Sidebar + KPI Strip + Content Grid. Density and Data Correlation.",
+    "spacing_scale": "p-2, p-4, p-6, p-8, p-12",
+    "grids": {
+      "base": "grid-cols-1 md:grid-cols-12 gap-4 md:gap-6",
+      "kpi_row": "col-span-12 grid grid-cols-2 md:grid-cols-4 gap-4",
+      "main_content": "col-span-12 xl:col-span-9",
+      "side_panel": "col-span-12 xl:col-span-3"
+    },
+    "rules": [
+      "Use CSS grid for the main layout structure.",
+      "No centered layouts for dashboard content. Left-align for scannability.",
+      "Use 'F-pattern' hierarchy: Main KPI top left.",
+      "Widgets must stretch to fill height using h-full. No jagged bottoms."
+    ]
+  },
+  "surfaces_and_borders": {
+    "strategy": "Grid Borders (Technical Look). Expose the skeleton.",
+    "cards": "Flat background, 1px solid border (border-border), NO shadows. Radius 0.",
+    "hover_states": "Slight lift (-translate-y-[1px]) with subtle border color darken/lighten.",
+    "headers": "Solid Background with a hard bottom border. NEVER transparent.",
+    "rules": [
+      "Avoid soft shadows. Replace with 1px solid strokes or 2px 'Inner Glow' highlights.",
+      "No Glassmorphism. This is a technical data app, refrain from visual refraction."
+    ]
+  },
+  "components": {
+    "libraries": "shadcn/ui, recharts, sonner, framer-motion",
+    "icons": {
+      "library": "@phosphor-icons/react",
+      "command": "yarn add @phosphor-icons/react",
+      "usage": "Use bold or regular weights. Perfect for dense dashboards."
+    },
+    "specific_instructions": {
+      "buttons": "Sharp edges (rounded-none), high contrast. Use hover:bg-primary/90.",
+      "tables": "Dense. Use Shadcn Table. No rounded corners on rows. Clear horizontal borders.",
+      "badges": "Use sharp badges. Red for 'No Website', Green for 'Has Website', Yellow for 'Contacted'.",
+      "forms": "Use Shadcn Input, Select, Checkbox. Keep inputs sharp (rounded-none).",
+      "dialogs": "Solid dark background with 1px border. No backdrop blur, use a solid bg-black/80 overlay."
+    }
+  },
+  "visual_enhancers": {
+    "motion": [
+      "Micro-interactions only. Fast, snappy feedback.",
+      "Staggered entrance for list items in the lead table.",
+      "Use Sonner for toast notifications."
+    ],
+    "empty_states": "Action-oriented empty states. If no scheduled searches exist, show a clear CTA to create one, accompanied by a subtle Phosphor icon."
+  },
+  "accessibility": {
+    "rules": [
+      "All interactive elements MUST have focus states with higher contrast (focus:ring-2 focus:ring-primary focus:ring-offset-background).",
+      "Ensure text meets APCA standards. White text on dark gray.",
+      "Include data-testid attributes on all interactive elements (e.g., data-testid='lead-table-row', data-testid='search-location-input')."
+    ]
+  },
+  "media": {
+    "strategy": "Minimal media. Dashboard relies on data. Use background image only for the Login/Auth screen to create a 'Command Center' feel.",
+    "image_urls": {
+      "auth_background": {
+        "url": "https://images.unsplash.com/photo-1645668160759-55565bd94987?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAxODF8MHwxfHNlYXJjaHwzfHxkYXJrJTIwdGFjdGljYWwlMjBhYnN0cmFjdCUyMGJhY2tncm91bmR8ZW58MHx8fHwxNzg1MTAzMzY4fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Abstract black and white tactical texture for login page background overlay.",
+        "usage": "Use with bg-cover, bg-center and a heavy overlay (bg-background/90) so the login form is perfectly readable."
+      }
+    }
+  },
+  "instructions_to_main_agent": [
+    "Wipe existing App.css global centered styles. Left-align text by default.",
+    "Update tailwind.config.js to set radius to 0 for the sharp, technical look.",
+    "Install required fonts and icon libraries before building.",
+    "Build a persistent layout with a collapsible left sidebar (240px) and top header.",
+    "Implement Shadcn UI heavily but strip rounded corners to match the 'Performance Pro' archetype.",
+    "Always add data-testid attributes to your components for testing.",
+    "For the Lead Dashboard, use a dense table or grid of cards. Highlight the 'Website Status' metric heavily as it's the core driver for cold calling.",
+    "Use Recharts for the Analytics view. Use the provided chart colors in CSS variables.",
+    "Ensure '10 AM everyday' scheduled search config is highly visible in the Settings/Manager view."
+  ],
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "Do not converge toward generic outputs. Avoid 'AI slop' aesthetics.",
+    "Never apply universal transition (transition: all).",
+    "Do not center align the app container in App.css.",
+    "Always use modern button styles, specifically sharp-edged for this project.",
+    "NEVER use AI assistant emojis for icons.",
+    "Use sonner for toast notifications.",
+    "Prioritize using pre-existing components from src/components/ui.",
+    "Create depth through layered design elements with z-index hierarchy, even in dark mode."
+  ]
+}

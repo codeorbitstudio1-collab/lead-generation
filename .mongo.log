@@ -1,0 +1,2 @@
+Emulate Docker CLI using podman. Create /etc/containers/nodocker to quiet msg.
+d839085478eb6d4c6b4a9673ee022c1ff480f8e96f7604273b0664b3061c0225

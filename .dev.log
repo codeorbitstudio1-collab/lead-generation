@@ -1,0 +1,8 @@
+MongoDB already listening on port 27017
+Starting backend on port 8000
+Starting frontend on port 3000
+All services started. Logs:
+  MongoDB:   /home/vo-17/Documents/Personal-project/lead-generation-main/.mongo.log
+  Backend:   /home/vo-17/Documents/Personal-project/lead-generation-main/.backend.log
+  Frontend:  /home/vo-17/Documents/Personal-project/lead-generation-main/.frontend.log
+Press Ctrl+C to stop everything.

@@ -1,0 +1,85 @@
+@import "@fontsource/chivo/400.css";
+@import "@fontsource/chivo/600.css";
+@import "@fontsource/chivo/700.css";
+@import "@fontsource/chivo/900.css";
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+    margin: 0;
+    font-family: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    background-color: #0A0A0A;
+    color: #ffffff;
+}
+
+.font-heading { font-family: "Chivo", sans-serif; }
+.font-mono { font-family: "JetBrains Mono", monospace; }
+
+@layer base {
+    :root {
+        --background: 0 0% 4%;
+        --foreground: 0 0% 100%;
+        --card: 0 0% 7%;
+        --card-foreground: 0 0% 100%;
+        --popover: 0 0% 7%;
+        --popover-foreground: 0 0% 100%;
+        --primary: 211 100% 50%;
+        --primary-foreground: 0 0% 100%;
+        --secondary: 240 5% 10%;
+        --secondary-foreground: 0 0% 100%;
+        --muted: 240 5% 16%;
+        --muted-foreground: 240 5% 65%;
+        --accent: 240 5% 16%;
+        --accent-foreground: 0 0% 100%;
+        --destructive: 0 100% 60%;
+        --destructive-foreground: 0 0% 100%;
+        --border: 240 5% 20%;
+        --input: 240 5% 20%;
+        --ring: 211 100% 50%;
+        --radius: 0rem;
+    }
+}
+
+@layer base {
+    * { @apply border-border; }
+    body { @apply bg-background text-foreground; }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #0A0A0A; }
+::-webkit-scrollbar-thumb { background: #2a2a2a; }
+::-webkit-scrollbar-thumb:hover { background: #3a3a3a; }
+
+/* Grid noise overlay */
+.grid-bg {
+    background-image:
+        linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+    background-size: 40px 40px;
+}
+
+/* Stagger animation */
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.animate-in-up { animation: fadeInUp 0.4s ease-out backwards; }
+
+/* Sharp button hover */
+.btn-sharp {
+    transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+.btn-sharp:hover { transform: translateY(-1px); }
+
+@layer base {
+    [data-debug-wrapper="true"] { display: contents !important; }
+}

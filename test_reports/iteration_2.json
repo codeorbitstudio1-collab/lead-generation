@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration 2 backend-only testing complete. 19/19 pytest cases pass covering: AI agent chat (real GPT-5.2 general Q&A, session persistence, history retrieval, open_page intent action), outreach email generation (real GPT-5.2 personalized subject+body referencing business name), outreach send graceful-fail paths (500 when Gmail unconfigured, 400 when no to_email, 404 lead-not-found), outreach list, outreach stats shape, poll-replies graceful no-op (0 new_replies when Gmail unconfigured), bulk lead update (matched/modified + persistence), bulk lead delete (deleted count + persistence), bulk empty-ids -> 400, extended settings shape (gmail_email/has_gmail_password/sender_name/email_configured), gmail settings persistence + partial update (does not wipe google_maps_api_key), and regression on /api/auth/login + /api/search. Real GPT-5.2 calls used: 4 total (chat x3, outreach/generate x1) — well within the ~2-3 target with 1 extra for full intent verification.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/outreach/poll-replies", "issue": "IMAP search uses hardcoded 'SINCE 01-Jan-2024' (see outreach.py:191 — the ternary always evaluates the false branch). Not a bug in current graceful-fail path (Gmail not configured), but once configured this will scan the entire inbox forever instead of last N days. Convert to a real 'since_days' window."},
+      {"endpoint": "outreach.py fetch_replies", "issue": "Only returns messages with an In-Reply-To or References header (skips replies that came in as new-thread). Fine for typed reply matching, but note that match-by-from-email in do_poll_replies will therefore never fire."},
+      {"endpoint": "/api/agent/chat", "issue": "History passed to LLM is loaded via `.sort('created_at', 1).to_list(50)` before the current message is stored — so the very first turn has no history (correct). On subsequent turns history[-6:] is used which is fine. Consider capping DB history growth (agent_history has no TTL/limit)."},
+      {"endpoint": "/api/outreach/send/{lead_id}", "issue": "Returns 500 on send failure — semantically 502 (Bad Gateway to upstream SMTP) would be more accurate. Not a functional issue; test spec explicitly asks for 500."},
+      {"endpoint": "/api/settings", "issue": "gmail_app_password is stored in plaintext in the settings collection and read back by any auth endpoint (masked=False). Consider encrypting at rest or at least never returning it (currently only the boolean has_gmail_password is exposed, which is correct)."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter2_features.py",
+    "/app/test_reports/pytest/pytest_iter2_results.xml",
+    "/app/backend/tests/backend_test.py"
+  ],
+  "action_items": [
+    "OPTIONAL: Fix hardcoded IMAP 'SINCE 01-Jan-2024' in outreach.py:191 to use dynamic since_days window before enabling Gmail in production.",
+    "OPTIONAL: Consider TTL / max-length on agent_history collection to prevent unbounded growth.",
+    "OPTIONAL: Encrypt gmail_app_password at rest instead of storing plaintext in settings collection.",
+    "OPTIONAL (carry-over from iter1): CORS_ORIGINS wildcard + allow_credentials=True is invalid per CORS spec."
+  ],
+  "critical_code_review_comments": [
+    "outreach.py:191 — IMAP SINCE date is effectively hardcoded ('01-Jan-2024') because of `if False else` ternary; must be fixed before enabling live IMAP.",
+    "GPT-5.2 integration via emergentintegrations works end-to-end: both /outreach/generate and /agent/chat return well-formed JSON parsed via regex fallback (handles code fences).",
+    "Bulk endpoints correctly scope by user_id (multi-tenant safe) and return matched/modified/deleted counts.",
+    "settings partial update pattern is correct — only non-None fields are written, so posting one key does not wipe others. Verified via test_post_gmail_settings_persist_and_partial_update.",
+    "outreach/send always inserts an outreach record even on failure (status=failed with error) BEFORE raising HTTPException 500 — good for stats and retry visibility.",
+    "Password store still plaintext for gmail_app_password (line 526-531 server.py). MongoDB is behind auth but this is worth hardening.",
+    "Agent action schema is loosely validated (LLM returns type/params, no server-side allow-list) — a malicious/hallucinated action.type could still be returned to frontend; frontend must whitelist known types."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter2_features.py"
+  ],
+  "success_rate": {"backend": "100% (19/19) iter2 + 15/15 iter1 = 34/34 total. Gmail SMTP/IMAP live paths NOT exercised (creds not configured — only graceful-fail paths tested as requested).", "frontend": "not tested (backend-only request)"},
+  "test_credentials": "admin@leadfinder.io / Admin@123 — verified working; EMERGENT_LLM_KEY present in /app/backend/.env and used for real GPT-5.2 calls in tests.",
+  "seed_data_creation": "Search calls with category='all' populated all 8 mock leads for admin user. 2 leads were deleted by test_bulk_delete. Agent chat history added ~6 documents in agent_history for admin. Gmail settings were set then cleared during the settings partial-update test.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Two test files exist: /app/backend/tests/backend_test.py (iter1, 15 tests) and /app/backend/tests/test_iter2_features.py (iter2, 19 tests). Both pass in parallel (pytest-xdist LoadScopeScheduling). Gmail SMTP/IMAP live path is UNVERIFIED — needs a real Gmail address + app password to exercise send + poll-replies actually delivering/receiving mail. Live Google Places also unverified (no API key). Real GPT-5.2 calls consume Emergent LLM credits — the iter2 file makes 4 LLM calls per full run.",
+  "rca of the issue": "No production bugs found. Two initial test failures (TestBulkLeads.test_bulk_update_status and test_bulk_delete) were test-setup issues — the mock filter for category='restaurant' only returns 1 lead (Ravi's Punjabi Dhaba is the only mock with type 'restaurant'). Fixed by using category='all' which the mock branch treats as 'return all 8 mock leads'. No app code changed."
+}
