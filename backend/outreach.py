@@ -15,6 +15,7 @@ import uuid
 import email
 import smtplib
 import imaplib
+import socket
 from html import escape
 from email.utils import make_msgid, parseaddr, formatdate
 from datetime import datetime, timezone, timedelta
@@ -26,6 +27,30 @@ from enrich import enrich_lead
 from utils.logger import get_logger, mask_secret
 
 logger = get_logger(__name__)
+
+
+class _IPv4SMTP(smtplib.SMTP):
+    """SMTP client that avoids unreachable IPv6 routes on some hosts."""
+
+    def _get_socket(self, host, port, timeout):
+        addresses = socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        if timeout is not None:
+            sock.settimeout(timeout)
+        sock.connect(addresses[0][4])
+        return sock
+
+
+class _IPv4SMTPSSL(smtplib.SMTP_SSL):
+    """SMTP-over-SSL client that avoids unreachable IPv6 routes."""
+
+    def _get_socket(self, host, port, timeout):
+        addresses = socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        if timeout is not None:
+            sock.settimeout(timeout)
+        sock.connect(addresses[0][4])
+        return self.context.wrap_socket(sock, server_hostname=host)
 
 # ─── LLM Config ───────────────────────────────────────────────────────────────
 
@@ -403,30 +428,53 @@ def send_gmail(
     msg.set_content(text_body, subtype="plain")
     msg.add_alternative(_htmlize_body(text_body, signature), subtype="html")
 
-    try:
-        ctx = ssl.create_default_context()
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ctx, timeout=20) as server:
-            server.login(from_email, from_password)
-            server.sendmail(from_email, [to_email], msg.as_string())
+    # Some hosting providers block implicit TLS (465), while allowing the
+    # equivalent STARTTLS connection (587). Try both before reporting failure.
+    smtp_errors = []
+    for port in (465, 587):
+        try:
+            ctx = ssl.create_default_context()
+            if port == 465:
+                server = _IPv4SMTPSSL("smtp.gmail.com", port, context=ctx, timeout=20)
+            else:
+                server = _IPv4SMTP("smtp.gmail.com", port, timeout=20)
+                server.starttls(context=ctx)
+            with server:
+                server.login(from_email, from_password)
+                server.sendmail(from_email, [to_email], msg.as_string())
 
-        logger.info(
-            "Email sent | from=%s to=%s subject=%s message_id=%s",
-            from_email,
-            mask_secret(to_email, 3),
-            subject[:60],
-            message_id,
-        )
-        return {"ok": True, "message_id": message_id}
+            logger.info(
+                "Email sent | from=%s to=%s subject=%s message_id=%s smtp_port=%d",
+                from_email,
+                mask_secret(to_email, 3),
+                subject[:60],
+                message_id,
+                port,
+            )
+            return {"ok": True, "message_id": message_id}
 
-    except smtplib.SMTPAuthenticationError:
-        logger.error(
-            "Gmail auth failed | from=%s — check app password", from_email
-        )
-        return {"ok": False, "error": "Gmail authentication failed. Check your app password."}
+        except smtplib.SMTPAuthenticationError:
+            logger.error(
+                "Gmail auth failed | from=%s — check app password", from_email
+            )
+            return {"ok": False, "error": "Gmail authentication failed. Check your app password."}
+        except (OSError, smtplib.SMTPException) as exc:
+            smtp_errors.append(f"port {port}: {exc}")
+            logger.warning(
+                "Gmail SMTP connection failed | from=%s port=%d error=%s",
+                from_email, port, exc,
+            )
 
-    except Exception as exc:
-        logger.error("Gmail send failed | from=%s to=%s error=%s", from_email, mask_secret(to_email, 3), exc)
-        return {"ok": False, "error": str(exc)}
+    error = "Unable to reach Gmail SMTP. Check the server's outbound network access and firewall (ports 465/587)."
+    if smtp_errors:
+        last_error = smtp_errors[-1].split(": ", 1)[-1]
+        if not isinstance(last_error, str) or "Network is unreachable" not in last_error:
+            error = f"Gmail SMTP connection failed: {last_error}"
+    logger.error(
+        "Gmail send failed | from=%s to=%s errors=%s",
+        from_email, mask_secret(to_email, 3), smtp_errors,
+    )
+    return {"ok": False, "error": error}
 
 
 # ─── IMAP Reply Fetching ──────────────────────────────────────────────────────
