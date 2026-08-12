@@ -31,6 +31,11 @@ app.add_middleware(
 )
 
 
+@app.get("/healthz")
+async def healthz():
+    return {"status": "ok"}
+
+
 @app.middleware("http")
 async def log_api_requests(request: Request, call_next):
     """Log every API request and its response status/duration."""
