@@ -108,6 +108,8 @@ start_backend() {
   fi
   (
     cd "$BACKEND_DIR"
+    # Prefer MONGO_URL from environment or backend/.env (live DB); fall back to local MongoDB.
+    MONGO_URL="${MONGO_URL:-$(grep -E '^MONGO_URL=' .env 2>/dev/null | cut -d= -f2-)}" \
     MONGO_URL="${MONGO_URL:-mongodb://localhost:$MONGO_PORT}" \
     DB_NAME="${DB_NAME:-leadgen}" \
     JWT_SECRET="${JWT_SECRET:-leadgen_super_secure_jwt_secret_key_2026_x9k2p4}" \

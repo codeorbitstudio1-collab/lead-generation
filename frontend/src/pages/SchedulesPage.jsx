@@ -4,15 +4,14 @@ import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Clock, Plus, Play, Trash, MapPin } from "@phosphor-icons/react";
+import CategoryCombobox from "@/components/CategoryCombobox";
 
 const defaultForm = { name: "", location: "", category: "restaurant", radius_meters: 5000, hour: 10, minute: 0, active: true };
 
 export default function SchedulesPage() {
   const [items, setItems] = useState([]);
-  const [categories, setCategories] = useState([]);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(defaultForm);
   const [loading, setLoading] = useState(false);
@@ -24,7 +23,6 @@ export default function SchedulesPage() {
 
   useEffect(() => {
     load();
-    api.get("/categories").then((r) => setCategories(r.data.categories));
   }, []);
 
   const create = async () => {
@@ -96,12 +94,9 @@ export default function SchedulesPage() {
               </div>
               <div>
                 <label className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground">Category</label>
-                <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
-                  <SelectTrigger data-testid="sch-category" className="rounded-none bg-[#121212] border-border mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent className="rounded-none bg-[#0A0A0A] border-border max-h-72">
-                    {categories.map((c) => <SelectItem key={c} value={c}>{c.replace(/_/g, " ")}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <div className="mt-1">
+                  <CategoryCombobox value={form.category} onChange={(v) => setForm({ ...form, category: v })} dataTestId="sch-category" placeholder="All categories" />
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>

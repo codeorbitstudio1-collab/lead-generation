@@ -1,7 +1,7 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
-import { MagnifyingGlass, Table, ChartBar, Clock, GearSix, SignOut, Crosshair, EnvelopeSimple, FileText, CurrencyDollar, Briefcase, LinkedinLogo, BookOpenText } from "@phosphor-icons/react";
+import { MagnifyingGlass, Table, ChartBar, Clock, GearSix, SignOut, Crosshair, EnvelopeSimple, FileText, CurrencyDollar, Briefcase, LinkedinLogo, BookOpenText, PhoneCall, Gauge } from "@phosphor-icons/react";
 
 const NAV = [
   { to: "/", label: "Lead Dashboard", icon: ChartBar, testId: "nav-dashboard" },
@@ -14,6 +14,8 @@ const NAV = [
   { to: "/freelance", label: "Freelance", icon: Briefcase, testId: "nav-freelance" },
   { to: "/linkedin", label: "LinkedIn", icon: LinkedinLogo, testId: "nav-linkedin" },
   { to: "/schedules", label: "Schedules", icon: Clock, testId: "nav-schedules" },
+  { to: "/scheduler-dashboard", label: "Scheduler Ops", icon: Gauge, testId: "nav-scheduler-dashboard" },
+  { to: "/call-now", label: "Call Now", icon: PhoneCall, testId: "nav-call-now" },
   { to: "/help", label: "Help Center", icon: BookOpenText, testId: "nav-help" },
   { to: "/settings", label: "Settings", icon: GearSix, testId: "nav-settings" },
 ];

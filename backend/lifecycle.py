@@ -8,9 +8,11 @@ Changes from original:
   - Admin user creation now logs the outcome.
 """
 import os
+import re
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from typing import Any, Dict
 
 from apscheduler.triggers.cron import CronTrigger
 
@@ -18,12 +20,138 @@ from auth import hash_password
 from config import validate_config
 from database import client, db, scheduler
 from search import run_search
+from outreach import build_signature, generate_outreach_email, send_gmail
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
+async def _get_setting(key: str) -> str:
+    doc = await db.settings.find_one({"key": key})
+    return (doc or {}).get("value", "") or ""
+
+
+EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
+
+
 # ─── Scheduled Job Helpers ────────────────────────────────────────────────────
+
+async def _send_outreach_for_schedule(
+    user_id: str,
+    location: str,
+    category: str,
+    schedule_id: str,
+    schedule_name: str,
+    max_emails: int = 25,
+) -> Dict[str, Any]:
+    """
+    After a scheduled search, generate + send AI outreach emails to the newly
+    captured leads that have a discovered email, and record each send in the
+    outreach collection (tagged with the schedule id for the dashboard).
+    """
+    from routes.crm import record_contact  # late import to avoid circular deps
+
+    gmail_email = await _get_setting("gmail_email")
+    gmail_pass = await _get_setting("gmail_app_password")
+    if not gmail_email or not gmail_pass:
+        logger.warning("Scheduled outreach skipped — Gmail not configured | schedule=%s", schedule_id)
+        return {"sent": 0, "failed": 0, "skipped": 0, "error": "Gmail not configured"}
+
+    sender_name = await _get_setting("sender_name") or "Web Services Team"
+    signature = build_signature(
+        sender_name,
+        gmail_email,
+        await _get_setting("email_signature") or "",
+    )
+
+    leads = await db.leads.find(
+        {
+            "user_id": user_id,
+            "location_searched": location,
+            "status": "new",
+            "discovered_email": {"$nin": [None, ""]},
+        },
+        {"_id": 0},
+    ).sort("created_at", -1).limit(max_emails).to_list(max_emails)
+
+    sent = failed = skipped = 0
+    now_iso = datetime.now(timezone.utc).isoformat()
+    for lead in leads:
+        try:
+            to_email = (lead.get("discovered_email") or "").strip()
+            if not to_email or not EMAIL_RE.fullmatch(to_email):
+                skipped += 1
+                continue
+            draft = await generate_outreach_email(
+                lead,
+                sender_name,
+                lead.get("source_mode") or lead.get("source") or "maps",
+                sender_name,
+            )
+            result = send_gmail(
+                gmail_email,
+                gmail_pass,
+                sender_name,
+                to_email,
+                draft.get("subject", ""),
+                draft.get("body", ""),
+                signature=signature,
+            )
+            lead_id = lead.get("id")
+            doc = {
+                "id": str(uuid.uuid4()),
+                "user_id": user_id,
+                "lead_id": lead_id,
+                "lead_name": lead.get("name"),
+                "to_email": to_email,
+                "subject": draft.get("subject", ""),
+                "body": draft.get("body", ""),
+                "sent_at": now_iso if result.get("ok") else None,
+                "message_id": result.get("message_id"),
+                "status": "sent" if result.get("ok") else "failed",
+                "error": result.get("error"),
+                "reply_body": None,
+                "reply_at": None,
+                "summary": None,
+                "template_id": None,
+                "ab_group_id": None,
+                "variant": None,
+                "schedule_id": schedule_id,
+                "schedule_name": schedule_name,
+                "created_at": now_iso,
+            }
+            await db.outreach.insert_one(dict(doc))
+            if result.get("ok"):
+                sent += 1
+                await db.leads.update_one(
+                    {"id": lead_id},
+                    {"$set": {"status": "contacted", "updated_at": now_iso}},
+                )
+                await record_contact(
+                    lead_id=lead_id,
+                    user_id=user_id,
+                    channel="email",
+                    direction="outbound",
+                    status="sent",
+                    summary=draft.get("subject", ""),
+                    notes=draft.get("body", "")[:500],
+                    auto_status=False,
+                )
+            else:
+                failed += 1
+        except Exception as exc:
+            failed += 1
+            logger.error(
+                "Scheduled outreach send failed | schedule=%s lead=%s error=%s",
+                schedule_id, lead.get("id"), exc,
+            )
+
+    logger.info(
+        "Scheduled outreach completed | schedule=%s sent=%d failed=%d skipped=%d",
+        schedule_id, sent, failed, skipped,
+    )
+    return {"sent": sent, "failed": failed, "skipped": skipped}
+
 
 async def scheduled_job_wrapper(
     sid: str,
@@ -31,15 +159,27 @@ async def scheduled_job_wrapper(
     location: str,
     category: str,
     radius: int,
+    send_emails: bool = False,
 ) -> None:
-    """Execute a scheduled search and update the schedule's last_run timestamp."""
+    """Execute a scheduled search (optionally + AI outreach emails) and record stats."""
     try:
         await run_search(location, category, radius, user_id, source=f"schedule:{sid}")
         now_iso = datetime.now(timezone.utc).isoformat()
-        await db.schedules.update_one({"id": sid}, {"$set": {"last_run": now_iso}})
+        schedule = await db.schedules.find_one({"id": sid}, {"_id": 0})
+        email_stats = None
+        if send_emails:
+            email_stats = await _send_outreach_for_schedule(
+                user_id, location, category, sid,
+                (schedule or {}).get("name") or sid,
+            )
+        update: Dict[str, Any] = {"last_run": now_iso}
+        if email_stats:
+            update["last_email_run"] = now_iso
+            update["last_email_stats"] = email_stats
+        await db.schedules.update_one({"id": sid}, {"$set": update})
         logger.info(
-            "Scheduled search completed | schedule_id=%s user_id=%s location=%s category=%s",
-            sid, user_id, location, category,
+            "Scheduled search completed | schedule_id=%s user_id=%s location=%s category=%s send_emails=%s",
+            sid, user_id, location, category, send_emails,
         )
     except Exception as exc:
         logger.error(
@@ -56,19 +196,20 @@ def register_job(
     location: str,
     category: str,
     radius: int,
+    send_emails: bool = False,
 ) -> None:
     """Register a cron job for an active schedule."""
     try:
         scheduler.add_job(
             scheduled_job_wrapper,
-            trigger=CronTrigger(hour=hour, minute=minute),
+            trigger=CronTrigger(hour=hour, minute=minute, timezone="UTC"),
             id=sid,
-            args=[sid, user_id, location, category, radius],
+            args=[sid, user_id, location, category, radius, send_emails],
             replace_existing=True,
         )
         logger.info(
-            "Schedule registered | schedule_id=%s hour=%02d minute=%02d user_id=%s",
-            sid, hour, minute, user_id,
+            "Schedule registered | schedule_id=%s hour=%02d minute=%02d user_id=%s send_emails=%s",
+            sid, hour, minute, user_id, send_emails,
         )
     except Exception as exc:
         logger.error("Failed to register schedule | schedule_id=%s error=%s", sid, exc)
@@ -81,6 +222,7 @@ async def load_existing_schedules() -> None:
         register_job(
             s["id"], s["hour"], s["minute"],
             s["user_id"], s["location"], s["category"], s["radius_meters"],
+            s.get("send_emails", False),
         )
         count += 1
     logger.info("Loaded %d active schedule(s) from database", count)
@@ -186,7 +328,7 @@ async def lifespan(app):  # noqa: ARG001
     try:
         scheduler.add_job(
             poll_all_replies_job,
-            trigger=CronTrigger(minute="*/10"),
+            trigger=CronTrigger(minute="*/10", timezone="UTC"),
             id="__poll_replies__",
             replace_existing=True,
         )

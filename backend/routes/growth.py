@@ -23,7 +23,7 @@ from core import (
     OutreachSendIn,
     AgentChatIn,
 )
-from discovery import EMAIL_RE, scrape_emails, render_template, build_lead_vars
+from discovery import EMAIL_RE, scrape_emails, search_emails_for_business, render_template, build_lead_vars
 from outreach import generate_outreach_email, summarize_thread, send_gmail, fetch_replies, agent_chat, build_signature
 from routes.crm import record_contact
 
@@ -56,9 +56,18 @@ async def discover_email_auto(lead_id: str, user: dict = Depends(get_current_use
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     url = (lead.get("website") or "").strip()
-    if not url:
-        raise HTTPException(status_code=400, detail="No website available for this lead")
-    result = await scrape_emails(url)
+    result = {"emails": [], "best": None, "pages_checked": 0}
+    if url:
+        result = await scrape_emails(url)
+    if not result.get("emails"):
+        # Fallback: search the web for the business name even without a website.
+        search_result = await search_emails_for_business(
+            lead.get("name", ""),
+            lead.get("location_searched") or lead.get("address", ""),
+        )
+        for key in ("emails", "best", "pages_checked"):
+            if key in search_result:
+                result[key] = search_result[key]
     now_iso = datetime.now(timezone.utc).isoformat()
     update = {"discovered_emails": result["emails"], "updated_at": now_iso}
     if result.get("best"):

@@ -11,6 +11,7 @@ import ClientDashboardPage from "@/pages/ClientDashboardPage";
 import SearchPage from "@/pages/SearchPage";
 import LeadsPage from "@/pages/LeadsPage";
 import SchedulesPage from "@/pages/SchedulesPage";
+import SchedulerDashboardPage from "@/pages/SchedulerDashboardPage";
 import SettingsPage from "@/pages/SettingsPage";
 import OutreachPage from "@/pages/OutreachPage";
 import TemplatesPage from "@/pages/TemplatesPage";
@@ -19,6 +20,7 @@ import LinkedInDashboardPage from "@/pages/LinkedInDashboardPage";
 import LinkedInProjectDetailPage from "@/pages/LinkedInProjectDetailPage";
 import SetupPlannerPage from "@/pages/SetupPlannerPage";
 import HelpCenterPage from "@/pages/HelpCenterPage";
+import CallNowPage from "@/pages/CallNowPage";
 import "@/App.css";
 
 function Protected({ children }) {
@@ -69,6 +71,8 @@ function App() {
             <Route path="/setup-planner" element={<Protected><SetupPlannerPage /></Protected>} />
             <Route path="/help" element={<Protected><HelpCenterPage /></Protected>} />
             <Route path="/schedules" element={<Protected><SchedulesPage /></Protected>} />
+            <Route path="/scheduler-dashboard" element={<Protected><SchedulerDashboardPage /></Protected>} />
+            <Route path="/call-now" element={<Protected><CallNowPage /></Protected>} />
             <Route path="/settings" element={<Protected><SettingsPage /></Protected>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

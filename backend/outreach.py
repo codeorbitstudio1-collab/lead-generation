@@ -193,6 +193,242 @@ Respond ONLY as strict JSON: {{"subject": "...", "body": "..."}}. Use \\n for li
 
 # ─── AI Thread Summarization ──────────────────────────────────────────────────
 
+async def generate_call_script(
+    lead: Dict[str, Any],
+    sender_name: str = "",
+    business_name: str = "",
+) -> Dict[str, str]:
+    """
+    Generate a short, personalised cold-call talk-track for a lead.
+
+    Uses the same LLM as the email generator. Falls back to a simple
+    template when no API key is configured.
+
+    Returns:
+        Dict with ``script`` (the talk-track) and optionally ``ai_error``.
+    """
+    name = lead.get("name") or "your business"
+    has_website = bool(lead.get("has_website"))
+    rating = lead.get("rating")
+    reviews = lead.get("user_ratings_total")
+    category = (lead.get("category_searched") or "").replace("_", " ") or "local business"
+
+    fallback_lines = [
+        f'Hi {name}, this is {sender_name or "Alex"} — am I speaking with the owner?',
+        f"I found your {category} on Google and noticed you're doing well locally.",
+    ]
+    if not has_website:
+        fallback_lines.append("One thing I noticed: you don't show up with a website yet, which means people searching for you can't easily reach you.")
+    elif rating:
+        fallback_lines.append(f"You've got a {rating}★ rating, which is great — but I think we can turn that reputation into more customers.")
+    else:
+        fallback_lines.append("I think you could be getting more customers than you are today.")
+    fallback_lines.append("I help local businesses fix exactly this. Do you have two minutes for me to explain?")
+    fallback = {"script": "\n".join(fallback_lines)}
+
+    api_key = await resolve_llm_key()
+    if not api_key:
+        logger.info(
+            "Call script generation skipped — no LLM key | lead=%s",
+            lead.get("id"),
+        )
+        return fallback
+
+    ctx = await enrich_lead(lead)
+    types = ", ".join(ctx["types"] or [lead.get("category_searched", "business")])
+
+    prompt = f"""You are an expert cold-call coach writing a short, natural phone script.
+
+BUSINESS:
+- Name: {ctx['name'] or 'Unknown'}
+- Category: {types}
+- Address: {ctx['address'] or 'N/A'}
+- Google rating: {ctx['rating'] or 'N/A'} ({ctx['reviews_count'] or 0} reviews)
+- Has website: {bool(ctx.get('website') or lead.get('website'))}
+- Google summary: {ctx['editorial_summary'] or 'N/A'}
+
+TASK: Write a cold-call script (max 110 words) in the following 4 parts:
+1. OPENING — say hello, your name, and ask if you're speaking with the owner.
+2. HOOK — one specific, true observation about THIS business (its rating, category, or missing website).
+3. OFFER — one sentence: you help local businesses turn reputation into customers.
+4. ASK — a low-pressure question, e.g. "Do you have two minutes?"
+
+Rules:
+- Sound human, warm, and confident. No hype. No invented facts.
+- Label each part with the short heading OPENING / HOOK / OFFER / ASK.
+- Respond ONLY as strict JSON: {{"script": "..."}} with \\n between sections. No markdown, no code fences."""
+
+    chat = LlmChat(
+        api_key=api_key,
+        session_id=f"callscript-{lead.get('id', uuid.uuid4())}",
+        system_message="You write short, natural, high-converting cold-call scripts grounded in real business data. Always respond in valid JSON.",
+    ).with_model(*LLM_MODEL)
+
+    try:
+        raw = (await chat.send_message(UserMessage(text=prompt))).strip().strip("`").strip()
+        if raw.startswith("json"):
+            raw = raw[4:].strip()
+        match = re.search(r"\{.*\}", raw, re.DOTALL)
+        if match:
+            raw = match.group(0)
+        data = json.loads(raw)
+        result = {"script": data.get("script", "").strip()}
+        logger.info("Call script generated | lead=%s", lead.get("id"))
+        return result or fallback
+    except Exception as exc:
+        logger.error("Call script generation failed | lead=%s error=%s", lead.get("id"), exc)
+        return {**fallback, "ai_error": str(exc)}
+
+
+# ─── Bilingual (EN/HI) Proposal Generation ───────────────────────────────────
+
+async def generate_proposal(
+    lead: Dict[str, Any],
+    sender_name: str = "Web Services Team",
+    client_name: str = "",
+) -> Dict[str, Any]:
+    """
+    Generate a detailed service proposal for a lead in both English and Hindi.
+
+    Returns a dict with ``proposal_en`` and ``proposal_hi`` plain-text strings
+    (both sendable over WhatsApp). Falls back to a bilingual template when no
+    LLM key is configured.
+    """
+    name = lead.get("name") or "your business"
+    category = (lead.get("category_searched") or "").replace("_", " ") or "local business"
+    has_website = bool(lead.get("has_website"))
+    website = lead.get("website") or ""
+    rating = lead.get("rating")
+    reviews = lead.get("user_ratings_total")
+    phone = lead.get("phone") or ""
+    address = lead.get("address") or ""
+    client = (client_name or "").strip() or sender_name
+
+    fallback_en = (
+        f"Hi {name},\n\n"
+        f"Thank you for your time today. Based on our conversation, here is a quick proposal.\n\n"
+        f"CURRENT SITUATION\n"
+        f"- Category: {category}\n"
+        f"- Google rating: {rating or 'N/A'} ({reviews or 0} reviews)\n"
+        f"- Website: {website or 'Not present'}\n"
+        f"- Phone: {phone or 'N/A'}\n"
+        f"- Address: {address or 'N/A'}\n\n"
+        f"WHAT I PROPOSE\n"
+        f"1. A professional website for {name} that works on mobile and ranks on Google.\n"
+        f"2. Google Business Profile optimisation so customers find you easily.\n"
+        f"3. Local SEO + online review management to turn ratings into bookings.\n\n"
+        f"BENEFITS\n"
+        f"- More customers from Google searches\n"
+        f"- A professional image that builds trust\n"
+        f"- Easy booking / contact from your site\n\n"
+        f"NEXT STEP\n"
+        f"Reply to this message or call {client} to confirm a start time. We can begin this week.\n\n"
+        f"Thanks,\n{client}"
+    )
+    fallback_hi = (
+        f"नमस्ते {name},\n\n"
+        f"आज बात करने के लिए धन्यवाद। आपके लिए एक छोटा प्रस्ताव नीचे दिया गया है।\n\n"
+        f"वर्तमान स्थिति\n"
+        f"- श्रेणी: {category}\n"
+        f"- Google रेटिंग: {rating or 'N/A'} ({reviews or 0} समीक्षाएँ)\n"
+        f"- वेबसाइट: {website or 'मौजूद नहीं'}\n"
+        f"- फ़ोन: {phone or 'N/A'}\n"
+        f"- पता: {address or 'N/A'}\n\n"
+        f"मेरा प्रस्ताव\n"
+        f"1. {name} के लिए एक प्रोफेशनल वेबसाइट जो मोबाइल पर चले और Google पर दिखे।\n"
+        f"2. Google Business Profile को बेहतर बनाना ताकि ग्राहक आपको आसानी से खोजें।\n"
+        f"3. Local SEO और रिव्यू मैनेजमेंट से रेटिंग को बुकिंग में बदलना।\n\n"
+        f"फ़ायदे\n"
+        f"- Google सर्च से ज़्यादा ग्राहक\n"
+        f"- विश्वास बढ़ाने वाली प्रोफेशनल छवि\n"
+        f"- वेबसाइट से आसान बुकिंग / संपर्क\n\n"
+        f"अगला कदम\n"
+        f"इस मैसेज का जवाब दें या {client} से कॉल करें। हम इसी हफ्ते शुरू कर सकते हैं।\n\n"
+        f"धन्यवाद,\n{client}"
+    )
+    fallback = {"proposal_en": fallback_en, "proposal_hi": fallback_hi}
+
+    api_key = await resolve_llm_key()
+    if not api_key:
+        logger.info(
+            "Proposal generation skipped — no LLM key | lead=%s",
+            lead.get("id"),
+        )
+        return fallback
+
+    ctx = await enrich_lead(lead)
+    types = ", ".join(ctx["types"] or [lead.get("category_searched", "business")])
+    reviews_txt = "\n".join(
+        f"- \"{s['text']}\" (rated {s['rating']} by {s['author']})"
+        for s in ctx["review_snippets"]
+    ) or "No review snippets available."
+
+    prompt = f"""You are a professional web agency writing a detailed, persuasive service proposal for a small local business.
+
+BUSINESS (from Google):
+- Name: {ctx['name'] or 'Unknown'}
+- Category: {types}
+- Address: {ctx['address'] or 'N/A'}
+- Google rating: {ctx['rating'] or 'N/A'} ({ctx['reviews_count'] or 0} reviews)
+- Phone: {ctx['phone'] or 'N/A'}
+- Website: {ctx['website'] or 'Not present'}
+- Google summary: {ctx['editorial_summary'] or 'N/A'}
+- Recent customer reviews:
+{reviews_txt}
+
+YOUR AGENCY:
+- Sender / contact: {client}
+
+TASK: Write TWO versions of a detailed service proposal for this business:
+1. "proposal_en" — a professional proposal in English.
+2. "proposal_hi" — the exact same proposal in natural Hindi (Devanagari script).
+
+Both proposals must include these sections (with clear headings):
+- Greeting: address the business owner by name, warm but professional.
+- Current situation: 2-3 specific, true observations from the Google data (rating, reviews, missing website, category).
+- What I propose: a clear plan with 3-4 services (website, Google Business Profile, local SEO, review management, online booking/contact) tailored to THIS business.
+- Benefits: 3-4 concrete outcomes (more customers from Google, trust, easy booking, etc.).
+- Investment & timeline: a simple note that pricing depends on scope and work can start within a week.
+- Next step: ask them to reply on WhatsApp or call {client} to begin.
+- Sign-off: your name.
+
+Rules:
+- Sound human and confident, never like a copy-paste template.
+- Only use facts from the Google data; never invent claims.
+- Keep each proposal around 250-350 words. Use \\n for line breaks, no markdown symbols, no emojis.
+- The Hindi version must be a real translation, not English words written in Devanagari.
+
+Respond ONLY as strict JSON: {{"proposal_en": "...", "proposal_hi": "..."}}. No markdown, no code fences, just JSON."""
+
+    chat = LlmChat(
+        api_key=api_key,
+        session_id=f"proposal-{lead.get('id', uuid.uuid4())}",
+        system_message="You write detailed, persuasive bilingual (English + Hindi) web service proposals grounded in real business data. Always respond in valid JSON.",
+    ).with_model(*LLM_MODEL)
+
+    try:
+        raw = (await chat.send_message(UserMessage(text=prompt))).strip().strip("`").strip()
+        if raw.startswith("json"):
+            raw = raw[4:].strip()
+        match = re.search(r"\{.*\}", raw, re.DOTALL)
+        if match:
+            raw = match.group(0)
+        data = json.loads(raw)
+        result = {
+            "proposal_en": (data.get("proposal_en") or "").strip(),
+            "proposal_hi": (data.get("proposal_hi") or "").strip(),
+        }
+        if not result["proposal_en"] or not result["proposal_hi"]:
+            return fallback
+        logger.info("Bilingual proposal generated | lead=%s", lead.get("id"))
+        return result
+    except Exception as exc:
+        logger.error("Proposal generation failed | lead=%s error=%s", lead.get("id"), exc)
+        return {**fallback, "ai_error": str(exc)}
+
+
+# ─── AI Thread Summarization ──────────────────────────────────────────────────
+
 async def summarize_thread(sent_body: str, reply_body: str) -> str:
     """
     Summarize the outreach → reply exchange in 2–3 sentences.

@@ -126,7 +126,8 @@ async def fetch_places(
             ),
             "Content-Type": "application/json",
         }
-        payload = {"textQuery": f"{category} in {location}", "maxResultCount": 20}
+        query_term = "businesses" if category.strip().lower() == "all" else category
+        payload = {"textQuery": f"{query_term} in {location}", "maxResultCount": 20}
 
         response = await hc.post(
             "https://places.googleapis.com/v1/places:searchText",
@@ -171,10 +172,11 @@ async def fetch_web_prospects(
     radius: int,
 ) -> List[Dict[str, Any]]:
     """Find businesses from the open web and enrich with public contact data."""
+    query_term = "businesses" if category.strip().lower() == "all" else category
     query_terms = [
-        f"{category} in {location}",
-        f"best {category} {location}",
-        f"{category} {location} contact",
+        f"{query_term} in {location}",
+        f"best {query_term} {location}",
+        f"{query_term} {location} contact",
     ]
     results: List[Dict[str, Any]] = []
     seen_domains: set[str] = set()
@@ -233,10 +235,11 @@ async def fetch_directory_prospects(
     radius: int,
 ) -> List[Dict[str, Any]]:
     """Find leads from public directory search results and enrich them."""
+    query_term = "businesses" if category.strip().lower() == "all" else category
     query_terms = [
-        f"{category} {location}",
-        f"{category} near {location}",
-        f"best {category} in {location}",
+        f"{query_term} {location}",
+        f"{query_term} near {location}",
+        f"best {query_term} in {location}",
     ]
     directory_hosts = ("yelp.com", "yellowpages.com", "foursquare.com", "mapquest.com")
     results: List[Dict[str, Any]] = []
@@ -329,7 +332,8 @@ def _url_to_lead(url: str, location: str, category: str, source_tag: str) -> Opt
 async def fetch_social_prospects(location: str, category: str, radius: int) -> List[Dict[str, Any]]:
     results: List[Dict[str, Any]] = []
     seen: set[str] = set()
-    for query in [f"{category} {location}", f"best {category} {location}"]:
+    query_term = "businesses" if category.strip().lower() == "all" else category
+    for query in [f"{query_term} {location}", f"best {query_term} {location}"]:
         try:
             urls = await _duckduckgo_urls(query, limit=12)
         except Exception:
@@ -352,7 +356,8 @@ async def fetch_social_prospects(location: str, category: str, radius: int) -> L
 async def fetch_review_prospects(location: str, category: str, radius: int) -> List[Dict[str, Any]]:
     results: List[Dict[str, Any]] = []
     seen: set[str] = set()
-    for query in [f"{category} reviews {location}", f"best {category} {location} review"]:
+    query_term = "businesses" if category.strip().lower() == "all" else category
+    for query in [f"{query_term} reviews {location}", f"best {query_term} {location} review"]:
         try:
             urls = await _duckduckgo_urls(query, limit=12)
         except Exception:
@@ -375,7 +380,8 @@ async def fetch_review_prospects(location: str, category: str, radius: int) -> L
 async def fetch_job_prospects(location: str, category: str, radius: int) -> List[Dict[str, Any]]:
     results: List[Dict[str, Any]] = []
     seen: set[str] = set()
-    for query in [f"{category} jobs {location}", f"hiring {category} {location}"]:
+    query_term = "businesses" if category.strip().lower() == "all" else category
+    for query in [f"{query_term} jobs {location}", f"hiring {query_term} {location}"]:
         try:
             urls = await _duckduckgo_urls(query, limit=15)
         except Exception:

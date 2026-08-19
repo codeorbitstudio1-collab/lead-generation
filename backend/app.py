@@ -9,6 +9,7 @@ from lifecycle import lifespan
 import routes.crm  # noqa: F401
 import routes.growth  # noqa: F401 (registers routes via side-effect)
 import routes.freelance  # noqa: F401
+import routes.coldcall  # noqa: F401 (cold-call queue + call scripts)
 from utils.logger import get_logger
 
 logger = get_logger("api.access")

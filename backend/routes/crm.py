@@ -172,6 +172,8 @@ async def list_leads(
     has_website: Optional[bool] = None,
     category: Optional[str] = None,
     q: Optional[str] = None,
+    page: int = 1,
+    per_page: int = 15,
     user: dict = Depends(get_current_user),
 ):
     query: Dict[str, Any] = {"user_id": user["id"]}
@@ -186,8 +188,18 @@ async def list_leads(
             {"name": {"$regex": q, "$options": "i"}},
             {"address": {"$regex": q, "$options": "i"}},
         ]
-    leads = await db.leads.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
-    return {"leads": leads, "total": len(leads)}
+    page = max(1, int(page))
+    per_page = max(1, min(int(per_page), 100))
+    total = await db.leads.count_documents(query)
+    leads = await db.leads.find(query, {"_id": 0}).sort("created_at", -1).skip((page - 1) * per_page).limit(per_page).to_list(per_page)
+    pages = max(1, -(-total // per_page))
+    return {
+        "leads": leads,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "pages": pages,
+    }
 
 
 @api.get("/leads/priorities")
@@ -924,12 +936,13 @@ async def create_schedule(body: ScheduleIn, user: dict = Depends(get_current_use
         "hour": body.hour,
         "minute": body.minute,
         "active": body.active,
+        "send_emails": body.send_emails,
         "last_run": None,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.schedules.insert_one(dict(doc))
     if body.active:
-        register_job(sid, body.hour, body.minute, user["id"], body.location, body.category, body.radius_meters)
+        register_job(sid, body.hour, body.minute, user["id"], body.location, body.category, body.radius_meters, body.send_emails)
     doc.pop("_id", None)
     return doc
 
@@ -948,7 +961,7 @@ async def update_schedule(sid: str, body: ScheduleUpdate, user: dict = Depends(g
     except Exception:
         pass
     if merged.get("active"):
-        register_job(sid, merged["hour"], merged["minute"], user["id"], merged["location"], merged["category"], merged["radius_meters"])
+        register_job(sid, merged["hour"], merged["minute"], user["id"], merged["location"], merged["category"], merged["radius_meters"], merged.get("send_emails", False))
     doc = await db.schedules.find_one({"id": sid}, {"_id": 0})
     return doc
 
@@ -970,7 +983,34 @@ async def run_now(sid: str, user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Schedule not found")
     result = await run_search(s["location"], s["category"], s["radius_meters"], user["id"], source=f"schedule:{s['name']}")
     await db.schedules.update_one({"id": sid}, {"$set": {"last_run": datetime.now(timezone.utc).isoformat()}})
+    if s.get("send_emails"):
+        from lifecycle import _send_outreach_for_schedule
+        email_stats = await _send_outreach_for_schedule(user["id"], s["location"], s["category"], sid, s["name"])
+        await db.schedules.update_one({"id": sid}, {"$set": {"last_email_run": datetime.now(timezone.utc).isoformat(), "last_email_stats": email_stats}})
+        result["email_stats"] = email_stats
     return result
+
+@api.get("/schedules/{sid}/emails")
+async def schedule_emails(sid: str, user: dict = Depends(get_current_user)):
+    """Scheduler dashboard: schedule info + every outreach email recorded for it."""
+    s = await db.schedules.find_one({"id": sid, "user_id": user["id"]})
+    if not s:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    s.pop("_id", None)
+
+    emails = await db.outreach.find(
+        {"schedule_id": sid, "user_id": user["id"]}, {"_id": 0}
+    ).sort("created_at", -1).limit(500).to_list(500)
+
+    sent = sum(1 for e in emails if e.get("status") == "sent")
+    failed = sum(1 for e in emails if e.get("status") == "failed")
+    replied = sum(1 for e in emails if e.get("reply_body"))
+
+    return {
+        "schedule": s,
+        "emails": emails,
+        "stats": {"total": len(emails), "sent": sent, "failed": failed, "replied": replied},
+    }
 
 # ==================== Settings ====================
 

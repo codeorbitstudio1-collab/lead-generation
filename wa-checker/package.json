@@ -1,0 +1,16 @@
+{
+  "name": "wa-checker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Free WhatsApp number checker using Baileys (scan QR once with a spare number, then query if numbers are registered).",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.0",
+    "express": "^4.21.2",
+    "pino": "^9.6.0",
+    "qrcode-terminal": "^0.12.0"
+  }
+}

@@ -7,8 +7,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DownloadSimple, MagnifyingGlass, Trash, PencilSimple, EnvelopeSimple } from "@phosphor-icons/react";
+import { DownloadSimple, MagnifyingGlass, Trash, PencilSimple, EnvelopeSimple, PhoneCall, MagicWand, WhatsappLogo, FileText, Copy } from "@phosphor-icons/react";
 import { OutreachComposer } from "@/pages/OutreachPage";
+import CategoryCombobox from "@/components/CategoryCombobox";
+import { waLink } from "@/lib/utils";
 
 const STATUSES = ["new", "contacted", "interested", "converted", "onboarding", "active", "closed", "archived", "rejected"];
 const STATUS_STYLES = {
@@ -22,18 +24,25 @@ const STATUS_STYLES = {
   archived: "bg-[#6b7280]/20 text-[#6b7280] border-[#6b7280]",
   rejected: "bg-[#FF3B30]/20 text-[#FF3B30] border-[#FF3B30]",
 };
-const CATEGORY_OPTIONS = ["restaurant", "cafe", "bar", "bakery", "spa", "beauty_salon", "hair_care", "gym", "lodging", "hotel", "car_rental", "car_repair", "moving_company", "plumber", "electrician", "dentist", "doctor", "lawyer", "real_estate_agency", "clothing_store", "shoe_store", "jewelry_store", "florist", "pet_store", "pharmacy", "supermarket", "school", "tourist_attraction", "travel_agency", "web_design", "web_development", "digital_marketing", "seo_agency", "social_media_marketing", "software_development", "it_services", "ecommerce", "app_development", "graphic_design", "content_marketing", "video_production", "photography_studio", "startup", "coworking_space", "online_store", "cloud_services", "data_analytics", "devops_consulting", "freelance_platform", "consulting_firm", "training_institute"];
-
 export default function LeadsPage() {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("all");
   const [websiteFilter, setWebsiteFilter] = useState("all");
   const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(15);
+  const [total, setTotal] = useState(0);
+  const [pages, setPages] = useState(1);
   const [editing, setEditing] = useState(null);
   const [editEmail, setEditEmail] = useState("");
   const [selected, setSelected] = useState(new Set());
   const [composerLead, setComposerLead] = useState(null);
+  const [scriptFor, setScriptFor] = useState(null);
+  const [generatingScript, setGeneratingScript] = useState(false);
+  const [proposalFor, setProposalFor] = useState(null);
+  const [proposalLang, setProposalLang] = useState("en");
+  const [generatingProposal, setGeneratingProposal] = useState(false);
   const [discoveringEmailFor, setDiscoveringEmailFor] = useState(null);
   const [newLeadOpen, setNewLeadOpen] = useState(false);
   const [newLead, setNewLead] = useState({
@@ -60,17 +69,23 @@ export default function LeadsPage() {
       if (websiteFilter === "no") params.has_website = false;
       if (websiteFilter === "yes") params.has_website = true;
       if (q) params.q = q;
+      params.page = page;
+      params.per_page = perPage;
       const { data } = await api.get("/leads", { params });
       setLeads(data.leads);
+      setTotal(data.total || 0);
+      setPages(data.pages || 1);
       setSelected(new Set());
     } catch {
       toast.error("Failed to load leads");
     } finally {
       setLoading(false);
     }
-  }, [status, websiteFilter, q]);
+  }, [status, websiteFilter, q, page, perPage]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => { setPage(1); }, [status, websiteFilter, q]);
 
   const updateStatus = async (id, newStatus) => {
     try {
@@ -133,6 +148,46 @@ export default function LeadsPage() {
     } finally {
       setDiscoveringEmailFor(null);
     }
+  };
+
+  const openScript = async (lead) => {
+    setGeneratingScript(true);
+    try {
+      const { data } = await api.get(`/leads/${lead.id}/call-script`);
+      setScriptFor({ ...lead, script: data.script });
+      setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, call_script: data.script } : l)));
+      if (data.ai_error) toast.error("Used fallback script (no LLM key set)");
+    } catch (err) {
+      toast.error(formatApiError(err, "Script generation failed"));
+    } finally {
+      setGeneratingScript(false);
+    }
+  };
+
+  const openProposal = async (lead) => {
+    if (lead.proposal_en && lead.proposal_hi) {
+      setProposalFor(lead);
+      setProposalLang("en");
+      return;
+    }
+    setGeneratingProposal(true);
+    try {
+      const { data } = await api.get(`/leads/${lead.id}/proposal`);
+      setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, proposal_en: data.proposal_en, proposal_hi: data.proposal_hi } : l)));
+      setProposalFor({ ...lead, proposal_en: data.proposal_en, proposal_hi: data.proposal_hi });
+      setProposalLang("en");
+      if (data.ai_error) toast.error("Used fallback proposal (no LLM key set)");
+    } catch (err) {
+      toast.error(formatApiError(err, "Proposal generation failed"));
+    } finally {
+      setGeneratingProposal(false);
+    }
+  };
+
+  const copyProposal = () => {
+    if (!proposalFor) return;
+    const text = proposalLang === "hi" ? proposalFor.proposal_hi : proposalFor.proposal_en;
+    navigator.clipboard.writeText(text).then(() => toast.success("Proposal copied")).catch(() => toast.error("Copy failed"));
   };
 
   const createManualLead = async () => {
@@ -206,7 +261,7 @@ export default function LeadsPage() {
       <div className="flex items-end justify-between flex-wrap gap-4">
         <div>
           <div className="text-[10px] tracking-[0.25em] uppercase text-muted-foreground">Pipeline</div>
-          <h1 className="font-heading text-4xl font-black tracking-tighter mt-1">Leads <span className="text-muted-foreground text-2xl font-mono">({leads.length})</span></h1>
+          <h1 className="font-heading text-4xl font-black tracking-tighter mt-1">Leads <span className="text-muted-foreground text-2xl font-mono">({total})</span></h1>
         </div>
         <div className="flex gap-2 flex-wrap">
           <Button onClick={() => setNewLeadOpen(true)} data-testid="new-lead-btn" className="rounded-none bg-black text-white border border-white/20 hover:bg-black/90 uppercase tracking-widest text-xs font-bold btn-sharp">
@@ -290,6 +345,7 @@ export default function LeadsPage() {
               <th className="p-3 w-8">
                 <Checkbox checked={allChecked} onCheckedChange={toggleAll} data-testid="check-all" className="rounded-none" />
               </th>
+              <th className="p-3 w-10">#</th>
               <th className="p-3">Business</th>
               <th className="p-3">Phone</th>
               <th className="p-3">Email</th>
@@ -302,14 +358,15 @@ export default function LeadsPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={9} className="p-6 text-center text-muted-foreground">Loading...</td></tr>
+              <tr><td colSpan={10} className="p-6 text-center text-muted-foreground">Loading...</td></tr>
             ) : leads.length === 0 ? (
-              <tr><td colSpan={9} className="p-6 text-center text-muted-foreground">No leads yet. Run a search to get started.</td></tr>
+              <tr><td colSpan={10} className="p-6 text-center text-muted-foreground">No leads yet. Run a search to get started.</td></tr>
             ) : leads.map((l, idx) => (
               <tr key={l.id} className="border-b border-border hover:bg-[#0A0A0A] animate-in-up" style={{ animationDelay: `${idx * 20}ms` }} data-testid={`lead-row-${l.id}`}>
                 <td className="p-3">
                   <Checkbox checked={selected.has(l.id)} onCheckedChange={() => toggle(l.id)} data-testid={`check-${l.id}`} className="rounded-none" />
                 </td>
+                <td className="p-3 font-mono text-xs text-muted-foreground">{(page - 1) * perPage + idx + 1}</td>
                 <td className="p-3">
                   <div className="font-medium">{l.name}</div>
                   <div className="text-xs text-muted-foreground">{l.address}</div>
@@ -317,14 +374,21 @@ export default function LeadsPage() {
                 </td>
                 <td className="p-3 font-mono text-xs">
                   {l.phone ? (
-                    <a
-                      href={`tel:${l.phone.replace(/[^+\d]/g, "")}`}
-                      onClick={() => updateStatus(l.id, "contacted")}
-                      className="text-white hover:text-[#34C759] hover:underline flex items-center gap-1.5"
-                      title="Click to dial directly from your mobile / device SIM ($0 cost)"
-                    >
-                      <span className="text-[#34C759]">☎</span><span>{l.phone}</span>
-                    </a>
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={`tel:${l.phone.replace(/[^+\d]/g, "")}`}
+                        onClick={() => updateStatus(l.id, "contacted")}
+                        className="text-white hover:text-[#34C759] hover:underline flex items-center gap-1.5"
+                        title="Click to dial directly from your mobile / device SIM ($0 cost)"
+                      >
+                        <span className="text-[#34C759]">☎</span><span>{l.phone}</span>
+                      </a>
+                      {waLink(l.phone) && (
+                        <a href={waLink(l.phone, `Hi ${l.name}, `)} target="_blank" rel="noreferrer" className="text-[#25D366] hover:text-[#25D366]/80" title="Open WhatsApp chat" data-testid={`wa-${l.id}`}>
+                          <WhatsappLogo size={16} />
+                        </a>
+                      )}
+                    </div>
                   ) : (
                     <span className="text-muted-foreground">—</span>
                   )}
@@ -345,11 +409,9 @@ export default function LeadsPage() {
                   ) : (
                     <div className="flex items-center gap-2">
                       <span className="text-muted-foreground">Email not available</span>
-                      {l.has_website && (
-                        <button onClick={() => discoverEmail(l)} disabled={discoveringEmailFor === l.id} className="text-[10px] uppercase tracking-widest border border-border px-2 py-1 hover:bg-[#0A0A0A] disabled:opacity-50">
-                          {discoveringEmailFor === l.id ? "Finding..." : "Find"}
-                        </button>
-                      )}
+                      <button onClick={() => discoverEmail(l)} disabled={discoveringEmailFor === l.id} className="text-[10px] uppercase tracking-widest border border-border px-2 py-1 hover:bg-[#0A0A0A] disabled:opacity-50" title={l.has_website ? "Scrape website + search the web" : "Search the web for a contact email"}>
+                        {discoveringEmailFor === l.id ? "Finding..." : "Find"}
+                      </button>
                     </div>
                   )}
                 </td>
@@ -377,6 +439,12 @@ export default function LeadsPage() {
                   <div className="text-xs text-muted-foreground truncate">{l.notes || "—"}</div>
                 </td>
                 <td className="p-3 whitespace-nowrap">
+                  <button onClick={() => openProposal(l)} disabled={generatingProposal} className="p-1.5 border border-[#25D366]/70 text-[#25D366] hover:bg-[#25D366]/10 mr-1 disabled:opacity-50" data-testid={`proposal-${l.id}`} title={l.proposal_en ? "View bilingual proposal" : "Generate bilingual proposal"}>
+                    {generatingProposal ? <MagicWand size={14} className="opacity-60" /> : <FileText size={14} />}
+                  </button>
+                  <button onClick={() => openScript(l)} disabled={generatingScript} className="p-1.5 border border-primary text-primary hover:bg-primary/10 mr-1 disabled:opacity-50" data-testid={`call-script-${l.id}`} title="Generate / view AI cold-call script">
+                    {generatingScript ? <MagicWand size={14} className="opacity-60" /> : <PhoneCall size={14} />}
+                  </button>
                   {(l.discovered_email || l.email) ? (
                     <button onClick={() => setComposerLead(l)} className="p-1.5 border border-primary text-primary hover:bg-primary/10 mr-1" data-testid={`email-lead-${l.id}`} title="Send AI email">
                       <EnvelopeSimple size={14} />
@@ -397,6 +465,53 @@ export default function LeadsPage() {
             ))}
           </tbody>
         </table>
+      </div>
+
+      <div className="flex items-center justify-between flex-wrap gap-4 border border-border bg-[#121212] p-4">
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground">Rows per page</span>
+          <Select value={String(perPage)} onValueChange={(v) => { setPerPage(Number(v)); setPage(1); }}>
+            <SelectTrigger data-testid="leads-per-page" className="rounded-none bg-[#0A0A0A] border-border h-9 w-24">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="rounded-none bg-[#0A0A0A] border-border">
+              {[15, 30, 50, 100].map((n) => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="text-xs font-mono text-muted-foreground">
+          {total === 0 ? "0 leads" : `${(page - 1) * perPage + 1}–${Math.min(page * perPage, total)} of ${total}`}
+        </div>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} className="rounded-none border border-border bg-[#0A0A0A] hover:bg-[#1A1A1A] uppercase tracking-widest text-xs h-9" data-testid="prev-page">
+            Prev
+          </Button>
+          {pages <= 7 ? (
+            Array.from({ length: pages }, (_, i) => i + 1).map((n) => (
+              <button
+                key={n}
+                onClick={() => setPage(n)}
+                data-testid={`page-${n}`}
+                className={`w-9 h-9 text-xs font-mono border ${page === n ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:text-white"}`}
+              >
+                {n}
+              </button>
+            ))
+          ) : (
+            <>
+              {[1, 2, 3].map((n) => (
+                <button key={n} onClick={() => setPage(n)} data-testid={`page-${n}`} className={`w-9 h-9 text-xs font-mono border ${page === n ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:text-white"}`}>{n}</button>
+              ))}
+              <span className="px-1 text-muted-foreground">…</span>
+              {[pages - 2, pages - 1, pages].map((n) => (
+                <button key={n} onClick={() => setPage(n)} data-testid={`page-${n}`} className={`w-9 h-9 text-xs font-mono border ${page === n ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:text-white"}`}>{n}</button>
+              ))}
+            </>
+          )}
+          <Button onClick={() => setPage((p) => Math.min(pages, p + 1))} disabled={page >= pages} className="rounded-none border border-border bg-[#0A0A0A] hover:bg-[#1A1A1A] uppercase tracking-widest text-xs h-9" data-testid="next-page">
+            Next
+          </Button>
+        </div>
       </div>
 
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
@@ -447,14 +562,9 @@ export default function LeadsPage() {
             </div>
             <div>
               <label className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground">Category</label>
-              <Select value={newLead.category_searched} onValueChange={(value) => setNewLead((p) => ({ ...p, category_searched: value }))}>
-                <SelectTrigger className="rounded-none bg-[#121212] border-border mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="rounded-none bg-[#0A0A0A] border-border max-h-80">
-                  {CATEGORY_OPTIONS.map((cat) => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <div className="mt-1">
+                <CategoryCombobox value={newLead.category_searched} onChange={(value) => setNewLead((p) => ({ ...p, category_searched: value }))} placeholder="Select category" />
+              </div>
             </div>
             <Input placeholder="Search location" value={newLead.location_searched} onChange={(e) => setNewLead((p) => ({ ...p, location_searched: e.target.value }))} className="rounded-none bg-[#121212] border-border" />
             <Input placeholder="Lead source" value={newLead.source} onChange={(e) => setNewLead((p) => ({ ...p, source: e.target.value }))} className="rounded-none bg-[#121212] border-border" />
@@ -466,6 +576,66 @@ export default function LeadsPage() {
             <Button onClick={() => setNewLeadOpen(false)} className="rounded-none border border-border bg-[#121212] hover:bg-[#1A1A1A] uppercase tracking-widest text-xs font-bold">Cancel</Button>
             <Button onClick={createManualLead} className="rounded-none bg-primary hover:bg-primary/90 uppercase tracking-widest text-xs font-bold">Save Lead</Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!scriptFor} onOpenChange={(o) => !o && setScriptFor(null)}>
+        <DialogContent className="rounded-none bg-[#0A0A0A] border-border max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="font-heading tracking-tight">Call Script — {scriptFor?.name}</DialogTitle>
+          </DialogHeader>
+          {scriptFor && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-muted-foreground">
+                {scriptFor.phone && <span>☎ {scriptFor.phone}</span>}
+                {scriptFor.address && <span>{scriptFor.address}</span>}
+              </div>
+              <pre className="whitespace-pre-wrap font-sans text-sm border border-border bg-[#121212] p-4">{scriptFor.script}</pre>
+              <div className="flex justify-end gap-2">
+                <Button onClick={() => { setScriptFor(null); openScript(scriptFor); }} className="rounded-none bg-black text-white border border-white/20 hover:bg-black/90 uppercase tracking-widest text-xs font-bold">
+                  <MagicWand size={14} className="mr-2" />Regenerate
+                </Button>
+                <Button onClick={() => setScriptFor(null)} className="rounded-none bg-primary hover:bg-primary/90 uppercase tracking-widest text-xs font-bold">Close</Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!proposalFor} onOpenChange={(o) => !o && setProposalFor(null)}>
+        <DialogContent className="rounded-none bg-[#0A0A0A] border-border max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="font-heading tracking-tight">Proposal — {proposalFor?.name}</DialogTitle>
+          </DialogHeader>
+          {proposalFor && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                <button onClick={() => setProposalLang("en")} data-testid="proposal-lang-en" className={`text-[10px] uppercase tracking-widest border px-3 py-1 ${proposalLang === "en" ? "border-primary text-primary bg-primary/10" : "border-border text-muted-foreground hover:text-white"}`}>English</button>
+                <button onClick={() => setProposalLang("hi")} data-testid="proposal-lang-hi" className={`text-[10px] uppercase tracking-widest border px-3 py-1 ${proposalLang === "hi" ? "border-primary text-primary bg-primary/10" : "border-border text-muted-foreground hover:text-white"}`}>हिन्दी</button>
+                <span className="text-[10px] uppercase tracking-widest text-muted-foreground ml-auto">{proposalFor.phone ? `☎ ${proposalFor.phone}` : ""}</span>
+              </div>
+              <div className="border border-border bg-[#121212] p-4 max-h-[420px] overflow-y-auto">
+                <pre className="whitespace-pre-wrap font-sans text-sm">{proposalLang === "hi" ? proposalFor.proposal_hi : proposalFor.proposal_en}</pre>
+              </div>
+              <div className="flex justify-end gap-2 flex-wrap">
+                <button onClick={copyProposal} className="rounded-none border border-border bg-[#121212] hover:bg-[#1A1A1A] uppercase tracking-widest text-xs font-bold px-4 py-2 flex items-center gap-2" data-testid="copy-proposal">
+                  <Copy size={14} />Copy
+                </button>
+                {proposalFor.phone && waLink(proposalFor.phone) && (
+                  <a
+                    href={waLink(proposalFor.phone, proposalLang === "hi" ? proposalFor.proposal_hi : proposalFor.proposal_en)}
+                    target="_blank"
+                    rel="noreferrer"
+                    data-testid="send-proposal-wa"
+                    className="rounded-none bg-[#25D366] text-black hover:bg-[#25D366]/90 uppercase tracking-widest text-xs font-bold px-4 py-2 flex items-center gap-2"
+                  >
+                    <WhatsappLogo size={14} />Send via WhatsApp
+                  </a>
+                )}
+                <Button onClick={() => setProposalFor(null)} className="rounded-none bg-primary hover:bg-primary/90 uppercase tracking-widest text-xs font-bold">Close</Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

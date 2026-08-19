@@ -4,10 +4,10 @@ import { toast } from "sonner";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MagnifyingGlass, WarningCircle, MapPin } from "@phosphor-icons/react";
+import CategoryCombobox from "@/components/CategoryCombobox";
 
 const POPULAR = ["restaurant", "spa", "beauty_salon", "hotel", "cafe", "gym", "bakery", "hair_care", "moving_company", "lodging", "web_design", "digital_marketing", "software_development"];
 const SOURCES = [
@@ -43,15 +43,10 @@ export default function SearchPage() {
   const [noWebsiteOnly, setNoWebsiteOnly] = useState(searchParams.get("no_website") === "1");
   const [selectedSources, setSelectedSources] = useState(["maps"]);
   const [sourceTab, setSourceTab] = useState("combined");
-  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [activeSourceTab, setActiveSourceTab] = useState("all");
   const nav = useNavigate();
-
-  useEffect(() => {
-    api.get("/categories").then((r) => setCategories(r.data.categories)).catch(() => {});
-  }, []);
 
   const onSearch = async (e) => {
     e.preventDefault();
@@ -117,16 +112,9 @@ export default function SearchPage() {
           </div>
           <div className="md:col-span-4">
             <label className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground">Category</label>
-            <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger data-testid="search-category" className="rounded-none bg-[#0A0A0A] border-border mt-1">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="rounded-none bg-[#0A0A0A] border-border max-h-80">
-                {categories.map((c) => (
-                  <SelectItem key={c} value={c} className="rounded-none">{c.replace(/_/g, " ")}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="mt-1">
+              <CategoryCombobox value={category} onChange={setCategory} dataTestId="search-category" placeholder="All categories" />
+            </div>
           </div>
           <div className="md:col-span-3">
             <label className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground">Radius (m)</label>

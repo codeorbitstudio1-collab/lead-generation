@@ -159,6 +159,7 @@ class ScheduleIn(BaseModel):
     hour: int = 10
     minute: int = 0
     active: bool = True
+    send_emails: bool = False
 
     @field_validator("hour")
     @classmethod
@@ -183,6 +184,7 @@ class ScheduleUpdate(BaseModel):
     hour: Optional[int] = None
     minute: Optional[int] = None
     active: Optional[bool] = None
+    send_emails: Optional[bool] = None
 
     @field_validator("hour")
     @classmethod
